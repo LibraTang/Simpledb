@@ -212,12 +212,13 @@ public class TupleDesc implements Serializable {
     public boolean equals(Object o) {
         // some code goes here
         // 判断是否为null以及类型是否相同
-        if (!(o instanceof TupleDesc desc)) {
+        if (!(o instanceof TupleDesc)) {
             return false;
         }
         if (o == this) {
             return true;
         }
+        TupleDesc desc = (TupleDesc) o;
 
         if (desc.numFields() != this.numFields()) {
             return false;
