@@ -6,6 +6,7 @@ import simpledb.common.DbException;
 import simpledb.common.DeadlockException;
 import simpledb.transaction.TransactionAbortedException;
 import simpledb.transaction.TransactionId;
+import simpledb.utils.LruCache;
 
 import java.io.*;
 
@@ -33,6 +34,9 @@ public class BufferPool {
     constructor instead. */
     public static final int DEFAULT_PAGES = 50;
 
+    // 利用LRU缓存队列实现BufferPool
+    private LruCache<PageId, Page> lruCache;
+
     /**
      * Creates a BufferPool that caches up to numPages pages.
      *
@@ -40,6 +44,7 @@ public class BufferPool {
      */
     public BufferPool(int numPages) {
         // some code goes here
+        lruCache = new LruCache<>(numPages);
     }
     
     public static int getPageSize() {
@@ -71,10 +76,28 @@ public class BufferPool {
      * @param pid the ID of the requested page
      * @param perm the requested permissions on the page
      */
-    public  Page getPage(TransactionId tid, PageId pid, Permissions perm)
+    public Page getPage(TransactionId tid, PageId pid, Permissions perm)
         throws TransactionAbortedException, DbException {
         // some code goes here
-        return null;
+        Page page = lruCache.get(pid);
+        if (page != null) {
+            return page;
+        }
+        return loadPage(pid);
+    }
+
+    // 将page加载入buffer pool
+    private Page loadPage(PageId pid) throws DbException {
+        DbFile dbFile = Database.getCatalog().getDatabaseFile(pid.getTableId());
+        Page page = dbFile.readPage(pid);
+        if (page != null) {
+            lruCache.put(pid, page);
+            // 如果buffer pool溢出，需要删除一个page
+            if (lruCache.getCacheSize() > lruCache.getCapacity()) {
+                evictPage();
+            }
+        }
+        return page;
     }
 
     /**
