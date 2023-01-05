@@ -10,7 +10,7 @@ import java.util.*;
  */
 public class TupleDesc implements Serializable {
 
-    private List<TDItem> descList;
+    private final List<TDItem> descList;
 
     /**
      * A help class to facilitate organizing the information of each field
