@@ -80,39 +80,39 @@ public class Catalog {
 
     /**
      * Returns the tuple descriptor (schema) of the specified table
-     * @param tableid The id of the table, as specified by the DbFile.getId()
+     * @param tableId The id of the table, as specified by the DbFile.getId()
      *     function passed to addTable
      * @throws NoSuchElementException if the table doesn't exist
      */
-    public TupleDesc getTupleDesc(int tableid) throws NoSuchElementException {
+    public TupleDesc getTupleDesc(int tableId) throws NoSuchElementException {
         // some code goes here
-        if (!tableInfoMap.containsKey(tableid)) {
+        if (!tableInfoMap.containsKey(tableId)) {
             throw new NoSuchElementException();
         }
-        DbFile dbFile = tableInfoMap.get(tableid).getDbFile();
+        DbFile dbFile = tableInfoMap.get(tableId).getDbFile();
         return dbFile.getTupleDesc();
     }
 
     /**
      * Returns the DbFile that can be used to read the contents of the
      * specified table.
-     * @param tableid The id of the table, as specified by the DbFile.getId()
+     * @param tableId The id of the table, as specified by the DbFile.getId()
      *     function passed to addTable
      */
-    public DbFile getDatabaseFile(int tableid) throws NoSuchElementException {
+    public DbFile getDatabaseFile(int tableId) throws NoSuchElementException {
         // some code goes here
-        if (!tableInfoMap.containsKey(tableid)) {
+        if (!tableInfoMap.containsKey(tableId)) {
             throw new NoSuchElementException();
         }
-        return tableInfoMap.get(tableid).getDbFile();
+        return tableInfoMap.get(tableId).getDbFile();
     }
 
-    public String getPrimaryKey(int tableid) throws NoSuchElementException {
+    public String getPrimaryKey(int tableId) throws NoSuchElementException {
         // some code goes here
-        if (!tableInfoMap.containsKey(tableid)) {
+        if (!tableInfoMap.containsKey(tableId)) {
             throw new NoSuchElementException();
         }
-        return tableInfoMap.get(tableid).getPkeyField();
+        return tableInfoMap.get(tableId).getPkeyField();
     }
 
     public Iterator<Integer> tableIdIterator() {
@@ -120,12 +120,12 @@ public class Catalog {
         return tableInfoMap.keySet().iterator();
     }
 
-    public String getTableName(int id) throws NoSuchElementException {
+    public String getTableName(int tableId) throws NoSuchElementException {
         // some code goes here
-        if (!tableInfoMap.containsKey(id)) {
+        if (!tableInfoMap.containsKey(tableId)) {
             throw new NoSuchElementException();
         }
-        return tableInfoMap.get(id).getTableName();
+        return tableInfoMap.get(tableId).getTableName();
     }
     
     /** Delete all tables from the catalog */

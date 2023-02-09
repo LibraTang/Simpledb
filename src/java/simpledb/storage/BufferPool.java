@@ -48,7 +48,7 @@ public class BufferPool {
     }
     
     public static int getPageSize() {
-      return pageSize;
+        return pageSize;
     }
     
     // THIS FUNCTION SHOULD ONLY BE USED FOR TESTING!!
