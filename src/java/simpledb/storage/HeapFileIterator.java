@@ -61,6 +61,7 @@ public class HeapFileIterator implements DbFileIterator {
     public void rewind() throws DbException, TransactionAbortedException {
         // 重置
         pgNum = -1;
+        close();
         open();
     }
 
