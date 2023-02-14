@@ -3,6 +3,7 @@ package simpledb.storage;
 import java.io.Serializable;
 import java.util.Arrays;
 import java.util.Iterator;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
 /**
@@ -15,7 +16,7 @@ public class Tuple implements Serializable {
     private static final long serialVersionUID = 1L;
 
     private TupleDesc tupleDesc;
-    private Field[] fields;
+    private final Field[] fields;
     private RecordId recordId;
 
     /**
@@ -88,6 +89,17 @@ public class Tuple implements Serializable {
         return fields[i];
     }
 
+    public static Tuple merge(TupleDesc td, Tuple ...tuples) {
+        Tuple mergedTuple = new Tuple(td);
+        AtomicInteger index = new AtomicInteger();
+        for (Tuple tuple : tuples) {
+            tuple.fields().forEachRemaining(f -> {
+                mergedTuple.setField(index.getAndIncrement(), f);
+            });
+        }
+        return mergedTuple;
+    }
+
     /**
      * Returns the contents of this Tuple as a string. Note that to pass the
      * system tests, the format needs to be as follows:
@@ -98,15 +110,7 @@ public class Tuple implements Serializable {
      */
     public String toString() {
         // some code goes here
-//        if (0 == fields.length) {
-//            return "";
-//        }
-//        StringBuilder sb = new StringBuilder(fields[0].toString());
-//        for (int i = 1; i < fields.length; i++) {
-//            sb.append(fields[i].toString()).append("\t");
-//        }
-//        return sb.toString();
-        return Arrays.stream(fields).map(Field::toString).collect(Collectors.joining("\t"));
+        return "Tuple{" + "tupleDesc=" + tupleDesc + ", fields=" + Arrays.toString(fields) + ", recordId=" + recordId + '}';
     }
 
     /**
