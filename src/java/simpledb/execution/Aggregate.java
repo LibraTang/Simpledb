@@ -23,7 +23,9 @@ public class Aggregate extends Operator {
     private int gFieldIndex;
     private Aggregator.Op op;
     private TupleDesc td;
+    private TupleDesc childTd;
     private Aggregator aggregator;
+    private OpIterator iterator;
 
     /**
      * Constructor.
@@ -44,14 +46,12 @@ public class Aggregate extends Operator {
         this.aFieldIndex = aFieldIndex;
         this.gFieldIndex = gFieldIndex;
         this.op = op;
-        this.td = child.getTupleDesc();
+        this.childTd = child.getTupleDesc();
 
-        Type gFieldType = td.getFieldType(gFieldIndex);
-        Type aFieldType = td.getFieldType(aFieldIndex);
-        if (aFieldType == Type.INT_TYPE) {
-            this.aggregator = new IntegerAggregator(gFieldIndex, gFieldType, aFieldIndex, op);
+        if (gFieldIndex == Aggregator.NO_GROUPING) {
+            this.td = new TupleDesc(new Type[] {childTd.getFieldType(aFieldIndex)}, new String[] {childTd.getFieldName(aFieldIndex)});
         } else {
-            this.aggregator = new StringAggregator(gFieldIndex, gFieldType, aFieldIndex, op);
+            this.td = new TupleDesc(new Type[] {childTd.getFieldType(gFieldIndex), childTd.getFieldType(aFieldIndex)}, new String[] {childTd.getFieldName(gFieldIndex), childTd.getFieldName(aFieldIndex)});
         }
     }
 
@@ -107,7 +107,26 @@ public class Aggregate extends Operator {
     public void open() throws NoSuchElementException, DbException,
             TransactionAbortedException {
         // some code goes here
+        super.open();
+        child.open();
 
+        // 确定aggregator类型
+        Type gFieldType = this.gFieldIndex == Aggregator.NO_GROUPING ? null : this.childTd.getFieldType(this.gFieldIndex);
+        Type aFieldType = this.childTd.getFieldType(this.aFieldIndex);
+        if (aFieldType == Type.INT_TYPE) {
+            this.aggregator = new IntegerAggregator(gFieldIndex, gFieldType, aFieldIndex, op);
+        } else {
+            this.aggregator = new StringAggregator(gFieldIndex, gFieldType, aFieldIndex, op);
+        }
+
+        // 遍历数据流
+        while (child.hasNext()) {
+            aggregator.mergeTupleIntoGroup(child.next());
+        }
+        child.close();
+        // 聚合结果的iterator
+        this.iterator = aggregator.iterator();
+        iterator.open();
     }
 
     /**
@@ -119,11 +138,16 @@ public class Aggregate extends Operator {
      */
     protected Tuple fetchNext() throws TransactionAbortedException, DbException {
         // some code goes here
+        if (iterator.hasNext()) {
+            return iterator.next();
+        }
         return null;
     }
 
     public void rewind() throws DbException, TransactionAbortedException {
         // some code goes here
+        close();
+        open();
     }
 
     /**
@@ -139,22 +163,26 @@ public class Aggregate extends Operator {
      */
     public TupleDesc getTupleDesc() {
         // some code goes here
-        return null;
+        return this.td;
     }
 
     public void close() {
         // some code goes here
+        super.close();
+        child.close();
+        iterator.close();
     }
 
     @Override
     public OpIterator[] getChildren() {
         // some code goes here
-        return null;
+        return new OpIterator[]{child};
     }
 
     @Override
     public void setChildren(OpIterator[] children) {
         // some code goes here
+        this.child = children[0];
     }
 
 }
