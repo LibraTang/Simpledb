@@ -1,6 +1,7 @@
 package simpledb.execution;
 
 import simpledb.common.DbException;
+import simpledb.common.Type;
 import simpledb.storage.Tuple;
 import simpledb.storage.TupleDesc;
 import simpledb.transaction.TransactionAbortedException;
@@ -17,21 +18,41 @@ public class Aggregate extends Operator {
 
     private static final long serialVersionUID = 1L;
 
+    private OpIterator child;
+    private int aFieldIndex;
+    private int gFieldIndex;
+    private Aggregator.Op op;
+    private TupleDesc td;
+    private Aggregator aggregator;
+
     /**
      * Constructor.
      * <p>
-     * Implementation hint: depending on the type of afield, you will want to
+     * Implementation hint: depending on the type of aFieldIndex, you will want to
      * construct an {@link IntegerAggregator} or {@link StringAggregator} to help
      * you with your implementation of readNext().
      *
      * @param child  The OpIterator that is feeding us tuples.
-     * @param afield The column over which we are computing an aggregate.
-     * @param gfield The column over which we are grouping the result, or -1 if
+     * @param aFieldIndex The column over which we are computing an aggregate.
+     * @param gFieldIndex The column over which we are grouping the result, or -1 if
      *               there is no grouping
-     * @param aop    The aggregation operator to use
+     * @param op    The aggregation operator to use
      */
-    public Aggregate(OpIterator child, int afield, int gfield, Aggregator.Op aop) {
+    public Aggregate(OpIterator child, int aFieldIndex, int gFieldIndex, Aggregator.Op op) {
         // some code goes here
+        this.child = child;
+        this.aFieldIndex = aFieldIndex;
+        this.gFieldIndex = gFieldIndex;
+        this.op = op;
+        this.td = child.getTupleDesc();
+
+        Type gFieldType = td.getFieldType(gFieldIndex);
+        Type aFieldType = td.getFieldType(aFieldIndex);
+        if (aFieldType == Type.INT_TYPE) {
+            this.aggregator = new IntegerAggregator(gFieldIndex, gFieldType, aFieldIndex, op);
+        } else {
+            this.aggregator = new StringAggregator(gFieldIndex, gFieldType, aFieldIndex, op);
+        }
     }
 
     /**
@@ -41,7 +62,7 @@ public class Aggregate extends Operator {
      */
     public int groupField() {
         // some code goes here
-        return -1;
+        return this.gFieldIndex;
     }
 
     /**
@@ -51,7 +72,7 @@ public class Aggregate extends Operator {
      */
     public String groupFieldName() {
         // some code goes here
-        return null;
+        return td.getFieldName(gFieldIndex);
     }
 
     /**
@@ -59,7 +80,7 @@ public class Aggregate extends Operator {
      */
     public int aggregateField() {
         // some code goes here
-        return -1;
+        return this.aFieldIndex;
     }
 
     /**
@@ -68,7 +89,7 @@ public class Aggregate extends Operator {
      */
     public String aggregateFieldName() {
         // some code goes here
-        return null;
+        return td.getFieldName(aFieldIndex);
     }
 
     /**
@@ -76,16 +97,17 @@ public class Aggregate extends Operator {
      */
     public Aggregator.Op aggregateOp() {
         // some code goes here
-        return null;
+        return this.op;
     }
 
-    public static String nameOfAggregatorOp(Aggregator.Op aop) {
-        return aop.toString();
+    public static String nameOfAggregatorOp(Aggregator.Op op) {
+        return op.toString();
     }
 
     public void open() throws NoSuchElementException, DbException,
             TransactionAbortedException {
         // some code goes here
+
     }
 
     /**
@@ -111,7 +133,7 @@ public class Aggregate extends Operator {
      * the aggregate value column.
      * <p>
      * The name of an aggregate column should be informative. For example:
-     * "aggName(aop) (child_td.getFieldName(afield))" where aop and afield are
+     * "aggName(op) (child_td.getFieldName(aFieldIndex))" where op and aFieldIndex are
      * given in the constructor, and child_td is the TupleDesc of the child
      * iterator.
      */

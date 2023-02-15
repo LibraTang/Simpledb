@@ -11,38 +11,39 @@ import java.util.*;
 public class IntegerAggregator implements Aggregator {
 
     private static final long serialVersionUID = 1L;
+    private static final Field DEFAULT_FIELD = new StringField("Default", 10);
 
     // group-by field index
-    private int gbfieldIndex;
+    private final int gbFieldIndex;
     // group-by field type
-    private Type gbfieldtype;
+    private final Type gbFieldType;
     // aggregate field
-    private int afieldIndex;
+    private final int aFieldIndex;
     // aggregation operator
-    private Op what;
+    private final Op what;
     // aggregator according to operator
     private AbstractIntegerAggregator aggregator;
 
     /**
      * Aggregate constructor
      * 
-     * @param gbfieldIndex
+     * @param gbFieldIndex
      *            the 0-based index of the group-by field in the tuple, or
      *            NO_GROUPING if there is no grouping
-     * @param gbfieldtype
+     * @param gbFieldType
      *            the type of the group by field (e.g., Type.INT_TYPE), or null
      *            if there is no grouping
-     * @param afieldIndex
+     * @param aFieldIndex
      *            the 0-based index of the aggregate field in the tuple
      * @param what
      *            the aggregation operator
      */
 
-    public IntegerAggregator(int gbfieldIndex, Type gbfieldtype, int afieldIndex, Op what) {
+    public IntegerAggregator(int gbFieldIndex, Type gbFieldType, int aFieldIndex, Op what) {
         // some code goes here
-        this.gbfieldIndex = gbfieldIndex;
-        this.gbfieldtype = gbfieldtype;
-        this.afieldIndex = afieldIndex;
+        this.gbFieldIndex = gbFieldIndex;
+        this.gbFieldType = gbFieldType;
+        this.aFieldIndex = aFieldIndex;
         this.what = what;
         getAggregator();
     }
@@ -79,12 +80,12 @@ public class IntegerAggregator implements Aggregator {
     public void mergeTupleIntoGroup(Tuple tup) {
         // some code goes here
         Field gbField;
-        if (this.gbfieldIndex == NO_GROUPING) {
-            gbField = new IntField(0);
+        if (this.gbFieldIndex == NO_GROUPING) {
+            gbField = DEFAULT_FIELD;
         } else {
-            gbField = tup.getField(this.gbfieldIndex);
+            gbField = tup.getField(this.gbFieldIndex);
         }
-        IntField aField = (IntField) tup.getField(afieldIndex);
+        IntField aField = (IntField) tup.getField(aFieldIndex);
         this.aggregator.apply(gbField, aField.getValue());
     }
 
@@ -101,8 +102,8 @@ public class IntegerAggregator implements Aggregator {
         Map<Field, Integer> result = this.aggregator.result();
         List<Tuple> tuples = new ArrayList<>();
         TupleDesc td;
-        if (this.gbfieldIndex != NO_GROUPING) {
-            td = new TupleDesc(new Type[] {gbfieldtype, Type.INT_TYPE});
+        if (this.gbFieldIndex != NO_GROUPING) {
+            td = new TupleDesc(new Type[] {gbFieldType, Type.INT_TYPE});
             result.forEach((k, v) -> {
                 Tuple tuple = new Tuple(td);
                 tuple.setField(0, k);
@@ -160,8 +161,8 @@ class IntegerSumAggregator extends AbstractIntegerAggregator {
 }
 
 class IntegerAvgAggregator extends AbstractIntegerAggregator {
-    private IntegerSumAggregator sumAggregator = new IntegerSumAggregator();
-    private IntegerCountAggregator countAggregator = new IntegerCountAggregator();
+    private final IntegerSumAggregator sumAggregator = new IntegerSumAggregator();
+    private final IntegerCountAggregator countAggregator = new IntegerCountAggregator();
 
     @Override
     public void apply(Field group, Integer value) {
@@ -174,9 +175,7 @@ class IntegerAvgAggregator extends AbstractIntegerAggregator {
         Map<Field, Integer> sumResult = sumAggregator.result();
         Map<Field, Integer> countResult = countAggregator.result();
 
-        sumResult.forEach((group, sum) -> {
-            groups.put(group, sum / countResult.get(group));
-        });
+        sumResult.forEach((group, sum) -> groups.put(group, sum / countResult.get(group)));
 
         return groups;
     }
