@@ -10,6 +10,7 @@ import simpledb.utils.LruCache;
 
 import java.io.*;
 
+import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -162,6 +163,12 @@ public class BufferPool {
         throws DbException, IOException, TransactionAbortedException {
         // some code goes here
         // not necessary for lab1
+        DbFile dbFile = Database.getCatalog().getDatabaseFile(tableId);
+        List<Page> dirtyPageList = dbFile.insertTuple(tid, t);
+        for (Page page : dirtyPageList) {
+            page.markDirty(true, tid);
+            lruCache.put(page.getId(), page);
+        }
     }
 
     /**
@@ -181,6 +188,12 @@ public class BufferPool {
         throws DbException, IOException, TransactionAbortedException {
         // some code goes here
         // not necessary for lab1
+        DbFile dbFile = Database.getCatalog().getDatabaseFile(t.getRecordId().getPageId().getTableId());
+        List<Page> dirtyPageList = dbFile.deleteTuple(tid, t);
+        for (Page page : dirtyPageList) {
+            page.markDirty(true, tid);
+            lruCache.put(page.getId(), page);
+        }
     }
 
     /**

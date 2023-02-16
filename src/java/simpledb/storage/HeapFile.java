@@ -77,8 +77,9 @@ public class HeapFile implements DbFile {
     // 通过RandomAccessFile随机访问HeapFile，读出对应的Page数据，构造HeapPage对象并返回
     public Page readPage(PageId pid) {
         // some code goes here
+        // page的起始位置
         int offset = pid.getPageNumber() * BufferPool.getPageSize();
-        try (RandomAccessFile rf = new RandomAccessFile(file, "r");) {
+        try (RandomAccessFile rf = new RandomAccessFile(file, "r")) {
             byte[] data = new byte[BufferPool.getPageSize()];
             rf.seek(offset);
             rf.readFully(data, 0, data.length);
@@ -92,6 +93,15 @@ public class HeapFile implements DbFile {
     public void writePage(Page page) throws IOException {
         // some code goes here
         // not necessary for lab1
+        // page的起始位置
+        int offset = page.getId().getPageNumber() * BufferPool.getPageSize();
+        try (RandomAccessFile rf = new RandomAccessFile(file, "rw")) {
+            byte[] data = page.getPageData();
+            rf.seek(offset);
+            rf.write(data);
+        } catch (IOException e) {
+            throw new IOException(e);
+        }
     }
 
     /**
@@ -106,16 +116,41 @@ public class HeapFile implements DbFile {
     public List<Page> insertTuple(TransactionId tid, Tuple t)
             throws DbException, IOException, TransactionAbortedException {
         // some code goes here
-        return null;
         // not necessary for lab1
+        List<Page> dirtyPageList = new ArrayList<>();
+        // 寻找一个有空位的page并插入
+        for (int i=0; i<this.numPages(); i++) {
+            HeapPage page = (HeapPage) Database.getBufferPool().getPage(tid, new HeapPageId(this.getId(), i), Permissions.READ_WRITE);
+            if (page != null && page.getNumEmptySlots() > 0) {
+                page.insertTuple(t);
+                dirtyPageList.add(page);
+                return dirtyPageList;
+            }
+        }
+        // 所有page都满了，需要创建一个新的page
+        HeapPageId pid = new HeapPageId(this.getId(), this.numPages());
+        HeapPage newPage = new HeapPage(pid, HeapPage.createEmptyPageData());
+        // 将新的page写入disk
+        writePage(newPage);
+        // 从BufferPool读取page
+        newPage = (HeapPage) Database.getBufferPool().getPage(tid, pid, Permissions.READ_WRITE);
+        newPage.insertTuple(t);
+        dirtyPageList.add(newPage);
+        return dirtyPageList;
     }
 
     // see DbFile.java for javadocs
-    public ArrayList<Page> deleteTuple(TransactionId tid, Tuple t) throws DbException,
+    public List<Page> deleteTuple(TransactionId tid, Tuple t) throws DbException,
             TransactionAbortedException {
         // some code goes here
-        return null;
         // not necessary for lab1
+        List<Page> dirtyPageList = new ArrayList<>();
+        HeapPage page = (HeapPage) Database.getBufferPool().getPage(tid, t.getRecordId().getPageId(), Permissions.READ_WRITE);
+        if (page != null && page.isSlotUsed(t.getRecordId().getTupleNumber())) {
+            page.deleteTuple(t);
+            dirtyPageList.add(page);
+        }
+        return dirtyPageList;
     }
 
     // see DbFile.java for javadocs

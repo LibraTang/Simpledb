@@ -25,6 +25,8 @@ public class HeapPage implements Page {
 
     byte[] oldData;
     private final Byte oldDataLock = (byte) 0;
+    // 标记page是否被修改
+    private TransactionId dirtied;
 
     /**
      * Create a HeapPage from a set of bytes of data read from disk.
@@ -252,6 +254,16 @@ public class HeapPage implements Page {
     public void deleteTuple(Tuple t) throws DbException {
         // some code goes here
         // not necessary for lab1
+        PageId pid = t.getRecordId().getPageId();
+        int tupleNumber = t.getRecordId().getTupleNumber();
+        if (!pid.equals(this.pid)) {
+            throw new DbException("Not on this page");
+        }
+        if (!isSlotUsed(tupleNumber)) {
+            throw new DbException("Tuple slot is already empty");
+        }
+        markSlotUsed(tupleNumber, false);
+        this.tuples[tupleNumber] = null;
     }
 
     /**
@@ -265,6 +277,16 @@ public class HeapPage implements Page {
     public void insertTuple(Tuple t) throws DbException {
         // some code goes here
         // not necessary for lab1
+        for (int i=0; i < getNumTuples(); i++) {
+            // 找到一个空的slot，插入
+            if (!isSlotUsed(i)) {
+                markSlotUsed(i, true);
+                t.setRecordId(new RecordId(this.pid, i));
+                this.tuples[i] = t;
+                return;
+            }
+        }
+        throw new DbException("No empty slots");
     }
 
     /**
@@ -274,6 +296,7 @@ public class HeapPage implements Page {
     public void markDirty(boolean dirty, TransactionId tid) {
         // some code goes here
         // not necessary for lab1
+        this.dirtied = dirty ? tid : null;
     }
 
     /**
@@ -282,7 +305,7 @@ public class HeapPage implements Page {
     public TransactionId isDirty() {
         // some code goes here
         // Not necessary for lab1
-        return null;
+        return this.dirtied;
     }
 
     /**
@@ -321,6 +344,12 @@ public class HeapPage implements Page {
     private void markSlotUsed(int i, boolean value) {
         // some code goes here
         // not necessary for lab1
+        int byteIndex = i / 8;
+        int offset = i % 8;
+        byte b = header[byteIndex];
+
+        b = value ? (byte) (b | (1 << offset)) : (byte) (b & ~(1 << offset));
+        header[byteIndex] = b;
     }
 
     /**
