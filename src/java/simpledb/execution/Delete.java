@@ -20,6 +20,8 @@ public class Delete extends Operator {
     private TransactionId tid;
     private OpIterator child;
     private TupleDesc td;
+    // 判断是否重复执行
+    private boolean isFetched;
 
     /**
      * Constructor specifying the transaction that this delete belongs to as
@@ -81,6 +83,11 @@ public class Delete extends Operator {
             }
             deleteCnt++;
         }
+        // 重复执行delete
+        if (isFetched) {
+            return null;
+        }
+        isFetched = true;
         Tuple tuple = new Tuple(td);
         tuple.setField(0, new IntField(deleteCnt));
         return tuple;
