@@ -1,7 +1,7 @@
 package simpledb.utils;
 
-import java.util.HashMap;
-import java.util.Map;
+import java.util.*;
+import java.util.stream.Collectors;
 
 public class LruCache<K, V> {
     // 双向链表
@@ -69,8 +69,33 @@ public class LruCache<K, V> {
         }
     }
 
+    public synchronized void remove(K key) {
+        if (cacheMap.containsKey(key)) {
+            DLinkedNode node = cacheMap.get(key);
+            removeNode(node);
+            cacheMap.remove(key);
+        }
+    }
+
+    public synchronized Iterator<V> iterator() {
+        return cacheMap.values().stream()
+                .map(dLinkedNode->dLinkedNode.value)
+                .collect(Collectors.toList())
+                .iterator();
+    }
+
+    public synchronized Iterator<V> reverseIterator() {
+        DLinkedNode last = tail.pre;
+        List<V> list = new ArrayList<>();
+        while (!last.equals(head)) {
+            list.add(last.value);
+            last = last.pre;
+        }
+        return list.iterator();
+    }
+
     // 移动节点至头部
-    public void moveToHead(DLinkedNode node) {
+    private void moveToHead(DLinkedNode node) {
         // 解除原来的连接
         removeNode(node);
         // 连接到头节点之后
@@ -78,15 +103,15 @@ public class LruCache<K, V> {
     }
 
     // 连接至头节点
-    public void linkToHead(DLinkedNode node) {
+    private void linkToHead(DLinkedNode node) {
         node.next = head.next;
         node.pre = head;
         head.next = node;
-        head.next.pre = node;
+        node.next.pre = node;
     }
 
     // 移除一个节点
-    public void removeNode(DLinkedNode node) {
+    private void removeNode(DLinkedNode node) {
         node.pre.next = node.next;
         node.next.pre = node.pre;
     }

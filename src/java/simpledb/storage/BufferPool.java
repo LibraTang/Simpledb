@@ -8,8 +8,10 @@ import simpledb.transaction.TransactionAbortedException;
 import simpledb.transaction.TransactionId;
 import simpledb.utils.LruCache;
 
+import javax.xml.crypto.Data;
 import java.io.*;
 
+import java.util.Iterator;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -92,11 +94,11 @@ public class BufferPool {
         DbFile dbFile = Database.getCatalog().getDatabaseFile(pid.getTableId());
         Page page = dbFile.readPage(pid);
         if (page != null) {
-            lruCache.put(pid, page);
-            // 如果buffer pool溢出，需要删除一个page
-            if (lruCache.getCacheSize() > lruCache.getCapacity()) {
+            // 如果buffer pool已经满了，需要删除一个page
+            if (lruCache.getCacheSize() == lruCache.getCapacity()) {
                 evictPage();
             }
+            lruCache.put(pid, page);
         }
         return page;
     }
@@ -204,7 +206,10 @@ public class BufferPool {
     public synchronized void flushAllPages() throws IOException {
         // some code goes here
         // not necessary for lab1
-
+        Iterator<Page> iterator = lruCache.iterator();
+        while (iterator.hasNext()) {
+            flushPage(iterator.next().getId());
+        }
     }
 
     /** Remove the specific page id from the buffer pool.
@@ -218,15 +223,25 @@ public class BufferPool {
     public synchronized void discardPage(PageId pid) {
         // some code goes here
         // not necessary for lab1
+        lruCache.remove(pid);
     }
 
     /**
      * Flushes a certain page to disk
      * @param pid an ID indicating the page to flush
      */
-    private synchronized  void flushPage(PageId pid) throws IOException {
+    private synchronized void flushPage(PageId pid) throws IOException {
         // some code goes here
         // not necessary for lab1
+        DbFile dbFile = Database.getCatalog().getDatabaseFile(pid.getTableId());
+        Page page = lruCache.get(pid);
+        if (page == null || page.isDirty() == null) {
+            // 没有脏数据
+            return;
+        }
+        dbFile.writePage(page);
+        // tid标记为null表明该脏页已经写入disk
+        page.markDirty(false, null);
     }
 
     /** Write all pages of the specified transaction to disk.
@@ -234,15 +249,33 @@ public class BufferPool {
     public synchronized  void flushPages(TransactionId tid) throws IOException {
         // some code goes here
         // not necessary for lab1|lab2
+        Iterator<Page> iterator = lruCache.iterator();
+        while (iterator.hasNext()) {
+            Page page = iterator.next();
+            if (page.isDirty() == tid) {
+                flushPage(page.getId());
+            }
+        }
     }
 
     /**
      * Discards a page from the buffer pool.
      * Flushes the page to disk to ensure dirty pages are updated on disk.
      */
-    private synchronized  void evictPage() throws DbException {
+    private synchronized void evictPage() throws DbException {
         // some code goes here
         // not necessary for lab1
+        // 获取从尾部开始遍历的page iterator
+        Iterator<Page> iterator = lruCache.reverseIterator();
+        // 找到一个可以淘汰的page，刷入disk后从BufferPool删除
+        while (iterator.hasNext()) {
+            Page page = iterator.next();
+            if (page.isDirty() == null) {
+                discardPage(page.getId());
+                return;
+            }
+        }
+        throw new DbException("All pages are dirty in buffer pool");
     }
 
 }
