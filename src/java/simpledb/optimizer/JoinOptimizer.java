@@ -130,7 +130,9 @@ public class JoinOptimizer {
             // HINT: You may need to use the variable "j" if you implemented
             // a join algorithm that's more complicated than a basic
             // nested-loops join.
-            return -1.0;
+            double IOCost = cost1 + card1 * cost2;
+            double CPUCost = card1 * card2;
+            return IOCost + CPUCost;
         }
     }
 
@@ -174,9 +176,24 @@ public class JoinOptimizer {
                                                    String field2PureName, int card1, int card2, boolean t1pkey,
                                                    boolean t2pkey, Map<String, TableStats> stats,
                                                    Map<String, Integer> tableAliasToId) {
-        int card = 1;
         // some code goes here
-        return card <= 0 ? 1 : card;
+        if (joinOp == Predicate.Op.EQUALS) {
+            if (t1pkey && t2pkey) {
+                // 都是主键，join的结果不会超过两者中更小的
+                return Math.min(card1, card2);
+            } else if (t1pkey || t2pkey) {
+                // 只有一个是主键，join的结果不会超过非主键的记录数
+                return t1pkey ? card2 : card1;
+            } else {
+                // 都不是主键，不好估算，返回两者中更大的
+                return Math.max(card1, card2);
+            }
+        } else {
+            // For range scans, it is similarly hard to say anything accurate about sizes.
+            // The size of the output should be proportional to the sizes of the inputs.
+            // It is fine to assume that a fixed fraction of the cross-product is emitted by range scans (say, 30%)
+            return (int) (0.3 * card1 * card2);
+        }
     }
 
     /**
