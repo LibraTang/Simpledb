@@ -252,10 +252,32 @@ public class JoinOptimizer {
             Map<String, TableStats> stats,
             Map<String, Double> filterSelectivities, boolean explain)
             throws ParsingException {
-
         // some code goes here
         //Replace the following
-        return joins;
+        // 记录不同join set的最佳组合方式
+        PlanCache planCache = new PlanCache();
+        // 先从1个连接结点开始计算，在此基础上计算2个、3个...
+        for (int len = 1; len <= joins.size(); len++) {
+            // 生成不同大小的子集
+            Set<Set<LogicalJoinNode>> nodeSubSets = enumerateSubsets(joins, len);
+            for (Set<LogicalJoinNode> nodes : nodeSubSets) {
+                CostCard bestPlan = new CostCard();
+                bestPlan.cost = Double.MAX_VALUE;
+                for (LogicalJoinNode node : nodes) {
+                    CostCard costCard = computeCostAndCardOfSubplan(stats, filterSelectivities, node, nodes, bestPlan.cost, planCache);
+                    if (costCard != null && costCard.cost < bestPlan.cost) {
+                        bestPlan = costCard;
+                    }
+                }
+                planCache.addPlan(nodes, bestPlan.cost, bestPlan.card, bestPlan.plan);
+            }
+        }
+        // 拿到joins的最佳组合方式
+        List<LogicalJoinNode> plan = planCache.getOrder(new HashSet<>(joins));
+        if (explain) {
+            printJoins(plan, planCache, stats, filterSelectivities);
+        }
+        return plan;
     }
 
     // ===================== Private Methods =================================
@@ -321,6 +343,7 @@ public class JoinOptimizer {
         boolean leftPkey, rightPkey;
 
         if (news.isEmpty()) { // base case -- both are base relations
+            // 如果news为空，说明之前还没有进行过计算，只需要计算removeNode的代价就可以
             prevBest = new ArrayList<>();
             t1cost = stats.get(table1Name).estimateScanCost();
             t1card = stats.get(table1Name).estimateTableCardinality(
@@ -349,6 +372,7 @@ public class JoinOptimizer {
 
             // estimate cost of right subtree
             if (doesJoin(prevBest, table1Alias)) { // j.t1 is in prevBest
+                // 如果removeNode的左表在prevBest中，则说明这个removeNode要接在右边
                 t1cost = prevBestCost; // left side just has cost of whatever
                                        // left
                 // subtree is
@@ -365,6 +389,7 @@ public class JoinOptimizer {
             } else if (doesJoin(prevBest, j.t2Alias)) { // j.t2 is in prevbest
                                                         // (both
                 // shouldn't be)
+                // 如果removeNode的右表在prevBest中，则说明这个removeNode要接在左边
                 t2cost = prevBestCost; // left side just has cost of whatever
                                        // left
                 // subtree is
