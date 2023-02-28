@@ -407,6 +407,7 @@ public class JoinOptimizer {
             }
         }
 
+        // 计算总的join cost，removeNode要分两种情况，一种是初始节点顺序，一种是交换后的节点顺序
         // case where prevbest is left
         double cost1 = estimateJoinCost(j, t1card, t2card, t1cost, t2cost);
 
