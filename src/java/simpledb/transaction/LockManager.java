@@ -5,6 +5,7 @@ import simpledb.storage.PageId;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Collectors;
 
 public class LockManager {
     // Page级别的锁
@@ -20,7 +21,7 @@ public class LockManager {
         lock.getWriteLock(tid);
     }
 
-    public synchronized Lock getLock(PageId pid) {
+    private synchronized Lock getLock(PageId pid) {
         Lock lock = lockTable.get(pid);
         if (lock == null) {
             lock = new Lock();
@@ -39,14 +40,32 @@ public class LockManager {
         return lock.owners.contains(tid);
     }
 
+    // 获取事务对应拿到的写锁
+    public Set<PageId> getLockedWritePages(TransactionId tid) {
+        return lockTable.entrySet().stream()
+                .filter(entry -> entry.getValue().owners.contains(tid))
+                .filter(entry -> entry.getValue().lockType == Lock.WRITE_TYPE)
+                .map(entry -> entry.getKey())
+                .collect(Collectors.toSet());
+    }
+
+    // 获取事务对应拿到的读锁
+    public Set<PageId> getLockedReadPages(TransactionId tid) {
+        return lockTable.entrySet().stream()
+                .filter(entry -> entry.getValue().owners.contains(tid))
+                .filter(entry -> entry.getValue().lockType == Lock.READ_TYPE)
+                .map(entry -> entry.getKey())
+                .collect(Collectors.toSet());
+    }
+
     class Lock {
         public static final int READ_TYPE = 0;
         public static final int WRITE_TYPE = 1;
 
         // 当前锁的持有事务
-        private Set<TransactionId> owners = ConcurrentHashMap.newKeySet();
+        private volatile Set<TransactionId> owners = ConcurrentHashMap.newKeySet();
         // 锁类型: 0-读锁，1-写锁
-        private int lockType = READ_TYPE;
+        private volatile int lockType = READ_TYPE;
 
         // 获取读锁
         public void getReadLock(TransactionId tid) {
@@ -70,7 +89,9 @@ public class LockManager {
                     e.printStackTrace();
                 }
             }
-            getReadLock(tid);
+            // 阻塞结束，获取读锁
+            lockType = READ_TYPE;
+            owners.add(tid);
         }
 
         // 获取写锁
@@ -81,16 +102,17 @@ public class LockManager {
                 owners.add(tid);
                 return;
             }
-            while (!canUpdateOrReenter(tid)) {
-                // 有其他事务持有读锁，阻塞
+            while (!owners.isEmpty() && !canUpdateOrReenter(tid)) {
+                // 有其他事务持有锁，阻塞
                 try {
                     Thread.sleep(5);
                 } catch (InterruptedException e) {
                     e.printStackTrace();
                 }
             }
+            // 阻塞结束，获取写锁
             lockType = WRITE_TYPE;
-            getWriteLock(tid);
+            owners.add(tid);
         }
 
         public void releaseLock(TransactionId tid) {

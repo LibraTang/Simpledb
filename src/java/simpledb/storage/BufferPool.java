@@ -4,6 +4,7 @@ import simpledb.common.Database;
 import simpledb.common.Permissions;
 import simpledb.common.DbException;
 import simpledb.common.DeadlockException;
+import simpledb.transaction.LockManager;
 import simpledb.transaction.TransactionAbortedException;
 import simpledb.transaction.TransactionId;
 import simpledb.utils.LruCache;
@@ -13,6 +14,7 @@ import java.io.*;
 
 import java.util.Iterator;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -38,7 +40,8 @@ public class BufferPool {
     public static final int DEFAULT_PAGES = 50;
 
     // 利用LRU缓存队列实现BufferPool
-    private LruCache<PageId, Page> lruCache;
+    private final LruCache<PageId, Page> lruCache;
+    private final LockManager lockManager;
 
     /**
      * Creates a BufferPool that caches up to numPages pages.
@@ -47,7 +50,8 @@ public class BufferPool {
      */
     public BufferPool(int numPages) {
         // some code goes here
-        lruCache = new LruCache<>(numPages);
+        this.lruCache = new LruCache<>(numPages);
+        this.lockManager = new LockManager();
     }
     
     public static int getPageSize() {
@@ -82,7 +86,17 @@ public class BufferPool {
     public Page getPage(TransactionId tid, PageId pid, Permissions perm)
         throws TransactionAbortedException, DbException {
         // some code goes here
-        // TODO: lock
+        // 根据请求类型获取锁
+        switch (perm) {
+            case READ_ONLY:
+                lockManager.acquireReadLock(pid, tid);
+                break;
+            case READ_WRITE:
+                lockManager.acquireWriteLock(pid, tid);
+                break;
+            default:
+                break;
+        }
         Page page = lruCache.get(pid);
         if (page != null) {
             return page;
@@ -116,6 +130,7 @@ public class BufferPool {
     public  void unsafeReleasePage(TransactionId tid, PageId pid) {
         // some code goes here
         // not necessary for lab1|lab2
+        lockManager.releaseLock(pid, tid);
     }
 
     /**
@@ -126,13 +141,14 @@ public class BufferPool {
     public void transactionComplete(TransactionId tid) {
         // some code goes here
         // not necessary for lab1|lab2
+        transactionComplete(tid, true);
     }
 
     /** Return true if the specified transaction has a lock on the specified page */
     public boolean holdsLock(TransactionId tid, PageId p) {
         // some code goes here
         // not necessary for lab1|lab2
-        return false;
+        return lockManager.holdsLock(p, tid);
     }
 
     /**
@@ -145,6 +161,27 @@ public class BufferPool {
     public void transactionComplete(TransactionId tid, boolean commit) {
         // some code goes here
         // not necessary for lab1|lab2
+        // 该事务拿到写锁的pages
+        Set<PageId> writePages = lockManager.getLockedWritePages(tid);
+        // 该事务拿到读锁的pages
+        Set<PageId> readPages = lockManager.getLockedReadPages(tid);
+        if (commit) {
+            try {
+                for (PageId pageId : writePages) {
+                    flushPage(pageId);
+                }
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        } else {
+            writePages.forEach(this::discardPage);
+        }
+        writePages.forEach(pageId -> {
+            lockManager.releaseLock(pageId, tid);
+        });
+        readPages.forEach(pageId -> {
+            lockManager.releaseLock(pageId, tid);
+        });
     }
 
     /**
