@@ -165,16 +165,21 @@ public class BufferPool {
         Set<PageId> writePages = lockManager.getLockedWritePages(tid);
         // 该事务拿到读锁的pages
         Set<PageId> readPages = lockManager.getLockedReadPages(tid);
-        if (commit) {
-            try {
-                for (PageId pageId : writePages) {
-                    flushPage(pageId);
+        try {
+            if (commit) {
+                try {
+                    for (PageId pageId : writePages) {
+                        flushPage(pageId);
+                    }
+                } catch (IOException e) {
+                    e.printStackTrace();
                 }
-            } catch (IOException e) {
-                e.printStackTrace();
+            } else {
+                // 若事务abort，重新从磁盘载入该事务涉及的page
+                reloadPages(tid);
             }
-        } else {
-            writePages.forEach(this::discardPage);
+        } catch (DbException e) {
+            e.printStackTrace();
         }
         writePages.forEach(pageId -> {
             lockManager.releaseLock(pageId, tid);
@@ -284,7 +289,7 @@ public class BufferPool {
 
     /** Write all pages of the specified transaction to disk.
      */
-    public synchronized  void flushPages(TransactionId tid) throws IOException {
+    public synchronized void flushPages(TransactionId tid) throws IOException {
         // some code goes here
         // not necessary for lab1|lab2
         Iterator<Page> iterator = lruCache.iterator();
@@ -292,6 +297,21 @@ public class BufferPool {
             Page page = iterator.next();
             if (page.isDirty() == tid) {
                 flushPage(page.getId());
+            }
+        }
+    }
+
+    /**
+     * 从磁盘重载事务对应的pages
+     * @param tid
+     */
+    public synchronized void reloadPages(TransactionId tid) throws DbException {
+        Iterator<Page> iterator = lruCache.iterator();
+        while (iterator.hasNext()) {
+            Page page = iterator.next();
+            if (page.isDirty() == tid) {
+                discardPage(page.getId());
+                loadPage(page.getId());
             }
         }
     }
