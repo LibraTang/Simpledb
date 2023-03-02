@@ -2,23 +2,35 @@ package simpledb.transaction;
 
 import simpledb.storage.PageId;
 
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
 public class LockManager {
     // Page级别的锁
-    private Map<PageId, Lock> lockTable = new ConcurrentHashMap<>();
+    private final Map<PageId, Lock> lockTable = new ConcurrentHashMap<>();
+    // 死锁检测
+    private final DeadLockDetector detector = new DeadLockDetector();
 
-    public void acquireReadLock(PageId pid, TransactionId tid) {
+    public void acquireReadLock(PageId pid, TransactionId tid) throws TransactionAbortedException {
         Lock lock = getLock(pid);
+        if (detector.waitFor(tid, pid)) {
+            // 检测到死锁，abort
+            throw new TransactionAbortedException();
+        }
         lock.getReadLock(tid);
+        // 已经授予锁
+        detector.lockGrantedOrGiveUp(tid, pid);
     }
 
-    public void acquireWriteLock(PageId pid, TransactionId tid) {
+    public void acquireWriteLock(PageId pid, TransactionId tid) throws TransactionAbortedException {
         Lock lock = getLock(pid);
+        if (detector.waitFor(tid, pid)) {
+            // 检测到死锁，abort
+            throw new TransactionAbortedException();
+        }
         lock.getWriteLock(tid);
+        detector.lockGrantedOrGiveUp(tid, pid);
     }
 
     private synchronized Lock getLock(PageId pid) {
@@ -122,6 +134,93 @@ public class LockManager {
         // 当前锁的持有事务是同一个事务，可以升级成写锁，或重新获取读锁
         private boolean canUpdateOrReenter(TransactionId tid) {
             return owners.size() == 1 && owners.contains(tid);
+        }
+    }
+
+    class DeadLockDetector {
+        // 事务等待获取的page的锁
+        private final Map<TransactionId, Set<PageId>> waitForMap = new ConcurrentHashMap<>();
+
+        /**
+         * 将事务和对应的锁加入map，并检查事务依赖
+         * @param tid
+         * @param pid
+         * @return
+         */
+        public synchronized boolean waitFor(TransactionId tid, PageId pid) {
+            // 加入等待map中
+            waitForMap.compute(tid, (k, v) -> {
+                if (v == null) {
+                    v = new HashSet<>();
+                }
+                v.add(pid);
+                return v;
+            });
+            Lock lock = lockTable.get(pid);
+            // 检查持有该锁的事务的依赖关系
+            if (hasLoop(lock.owners)) {
+                // 如果会成环，当前事务放弃获取锁
+                lockGrantedOrGiveUp(tid, pid);
+                return true;
+            }
+            return false;
+        }
+
+        /**
+         * 事务能够获取该锁或者放弃获取该锁，清除map中的等待记录
+         * @param tid
+         * @param pid
+         */
+        public synchronized void lockGrantedOrGiveUp(TransactionId tid, PageId pid) {
+            Set<PageId> pageIds = waitForMap.get(tid);
+            pageIds.remove(pid);
+            if (pageIds.isEmpty()) {
+                waitForMap.remove(tid);
+            }
+        }
+
+        /**
+         * 事务依赖是否存在环
+         * @param waitingForOwners // 等待的锁的持有者
+         * @return
+         */
+        private boolean hasLoop(Set<TransactionId> waitingForOwners) {
+            // 记录已经检查过的事务
+            Set<TransactionId> checked = new HashSet<>();
+            // 准备检查的事务队列
+            Queue<TransactionId> queue = new LinkedList<>(waitingForOwners);
+            while (!queue.isEmpty()) {
+                // 当前检查的事务
+                TransactionId currentT = queue.poll();
+                checked.add(currentT);
+                // 该事务等待的锁
+                Set<PageId> waitingPages = waitForMap.get(currentT);
+                if (waitingPages == null) {
+                    continue;
+                }
+                for (PageId pid : waitingPages) {
+                    // 持有该锁的事务
+                    Set<TransactionId> owners = lockTable.get(pid).owners;
+                    for (TransactionId owner : owners) {
+                        if (!waitForMap.containsKey(owner)) {
+                            // 只有在等待锁的事务才需要检查
+                            continue;
+                        }
+                        if (currentT.equals(owner)) {
+                            // 自己占有的锁可以重入
+                            continue;
+                        }
+                        if (checked.contains(owner)) {
+                            // 重复访问，有环
+                            return true;
+                        } else {
+                            // 加入检查队列中
+                            queue.add(owner);
+                        }
+                    }
+                }
+            }
+            return false;
         }
     }
 }
