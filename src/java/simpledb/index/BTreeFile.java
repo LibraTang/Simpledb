@@ -177,18 +177,46 @@ public class BTreeFile implements DbFile {
 	 * If f is null, it finds the left-most leaf page -- used for the iterator
 	 * 
 	 * @param tid - the transaction id
-	 * @param dirtypages - the list of dirty pages which should be updated with all new dirty pages
+	 * @param dirtyPages - the list of dirty pages which should be updated with all new dirty pages
 	 * @param pid - the current page being searched
 	 * @param perm - the permissions with which to lock the leaf page
 	 * @param f - the field to search for
 	 * @return the left-most leaf page possibly containing the key field f
 	 * 
 	 */
-	private BTreeLeafPage findLeafPage(TransactionId tid, Map<PageId, Page> dirtypages, BTreePageId pid, Permissions perm,
+	private BTreeLeafPage findLeafPage(TransactionId tid, Map<PageId, Page> dirtyPages, BTreePageId pid, Permissions perm,
                                        Field f)
 					throws DbException, TransactionAbortedException {
 		// some code goes here
-        return null;
+		// 找到叶子节点
+		if (pid.pgcateg() == BTreePageId.LEAF) {
+			return (BTreeLeafPage) getPage(tid, dirtyPages, pid, perm);
+		}
+		Page page = getPage(tid, dirtyPages, pid, Permissions.READ_ONLY);
+		if (pid.pgcateg() == BTreePageId.ROOT_PTR) {
+			BTreeRootPtrPage rootPtrPage = (BTreeRootPtrPage) page;
+			return findLeafPage(tid, dirtyPages, rootPtrPage.getRootId(), perm, f);
+		} else if (pid.pgcateg() == BTreePageId.INTERNAL) {
+			BTreeInternalPage internalPage = (BTreeInternalPage) page;
+			Iterator<BTreeEntry> iterator = internalPage.iterator();
+			BTreeEntry entry = iterator.next();
+			if (f == null) {
+				// 如果 f == null，则寻找最左边的叶子节点
+				return findLeafPage(tid, dirtyPages, entry.getLeftChild(), perm, f);
+			}
+			while (iterator.hasNext()) {
+				if (entry.getKey().compare(Op.GREATER_THAN_OR_EQ, f)) {
+					return findLeafPage(tid, dirtyPages, entry.getLeftChild(), perm, f);
+				}
+				entry = iterator.next();
+			}
+			// 遍历到page的最后一个entry，判断应该走左节点还是右节点
+			if (entry.getKey().compare(Op.GREATER_THAN_OR_EQ, f)) {
+				return findLeafPage(tid, dirtyPages, entry.getLeftChild(), perm, f);
+			}
+			return findLeafPage(tid, dirtyPages, entry.getRightChild(), perm, f);
+		}
+        throw new DbException("Not supported page category to find leaf page");
 	}
 	
 	/**
@@ -390,7 +418,7 @@ public class BTreeFile implements DbFile {
 	 * accessed multiple times.
 	 * 
 	 * @param tid - the transaction id
-	 * @param dirtypages - the list of dirty pages which should be updated with all new dirty pages
+	 * @param dirtyPages - the list of dirty pages which should be updated with all new dirty pages
 	 * @param pid - the id of the requested page
 	 * @param perm - the requested permissions on the page
 	 * @return the requested page
@@ -399,15 +427,15 @@ public class BTreeFile implements DbFile {
 	 * @throws IOException
 	 * @throws TransactionAbortedException
 	 */
-	Page getPage(TransactionId tid, Map<PageId, Page> dirtypages, BTreePageId pid, Permissions perm)
+	Page getPage(TransactionId tid, Map<PageId, Page> dirtyPages, BTreePageId pid, Permissions perm)
 			throws DbException, TransactionAbortedException {
-		if(dirtypages.containsKey(pid)) {
-			return dirtypages.get(pid);
+		if(dirtyPages.containsKey(pid)) {
+			return dirtyPages.get(pid);
 		}
 		else {
 			Page p = Database.getBufferPool().getPage(tid, pid, perm);
 			if(perm == Permissions.READ_WRITE) {
-				dirtypages.put(pid, p);
+				dirtyPages.put(pid, p);
 			}
 			return p;
 		}
